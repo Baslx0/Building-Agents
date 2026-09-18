@@ -1,79 +1,60 @@
 # Roadmap
 
-This roadmap follows the actual learning order rather than jumping directly to an agent framework.
+The repository is organized around **meaningful stages**, not individual exercises. A stage can contain several Python and agent concepts; its code represents the best checkpoint reached at the end of that stage.
 
-## Phase 01 — Functions to Tools
+## Stage 01 — Rule-Based Foundation
 
-**Status:** Complete
+**Status: Complete**
 
-Learned:
-- function parameters
-- dynamic values and f-strings
+This stage groups everything required to build the first controlled tool system:
+
+- functions and parameters
+- f-strings
 - `print()` vs `return`
 - early returns
+- modules, functions, methods, and attributes
+- `subprocess.run()`
+- stdout, stderr, and return codes
+- first real IT tool: `ping_host(host)`
+- second tool: `greet(name)`
+- manual routing
+- command parsing with `.split()`
+- list indexes and `len()`
+- basic input validation
+- controlled unsupported-tool responses
 
-Outcome: functions can receive inputs and return reusable results.
+End-of-stage checkpoint: `stages/01-rule-based-foundation/agent.py`.
 
-## Phase 02 — First Real IT Tool
+The important limitation is intentional: tool selection is still encoded with Python rules.
 
-**Status:** Complete
+## Stage 02 — Local LLM
 
-Introduced Python's `subprocess` module and Windows ping.
+**Status: Next**
 
-Learned:
-- `module.function()`
-- object attributes such as `result.stdout`
-- `capture_output=True`
-- `text=True`
-- process return codes
+Give the system a language-understanding layer without jumping to a hosted API or agent framework.
 
-Outcome: `ping_host(host)` performs a real system operation and returns a simple reachable/unreachable result.
+Goals:
+- choose a small model suitable for local inference
+- run the model locally
+- call it from Python
+- understand prompts, responses, and the local inference boundary
+- ask it to identify intent without allowing it to execute system commands
 
-## Phase 03 — Manual Tool Router
+End goal: natural language can be converted into a proposed action.
 
-**Status:** Complete
+## Stage 03 — Structured Tool Calling
 
-Added a second tool, `greet(name)`, then built a CLI router.
+Turn the model's proposed action into a controlled interface.
 
-Learned:
-- choosing between tools
-- passing arguments dynamically
-- avoiding duplicate tool execution
-- separating execution from display
-- why `print()` can accidentally produce `None` at the caller
+Goals:
+- define a tool registry
+- describe allowed tools and arguments
+- request structured decisions
+- parse and validate model output
+- reject unknown tools or malformed arguments
+- execute exactly one approved Python tool
 
-Outcome: one program can expose multiple tools and select one at runtime.
-
-## Phase 04 — Command Parser and Validation
-
-**Status:** Current checkpoint
-
-Moved from numeric menu choices toward commands such as:
-
-```text
-ping google.com
-greet Basil
-```
-
-Learned:
-- `.split()`
-- list indexes
-- `len()`
-- `and` / `or`
-- validation before accessing arguments
-- reducing unnecessary nesting with early returns
-
-Limitation: the router only understands syntax explicitly programmed into Python.
-
-## Phase 05 — Give the Agent a Brain
-
-**Status:** Next
-
-Run a small local LLM suitable for local inference.
-
-First goal: send a simple prompt from Python and receive a response. No tool calling yet.
-
-Then teach the model about the available tools and request a structured decision, conceptually:
+Conceptual decision:
 
 ```json
 {
@@ -84,62 +65,51 @@ Then teach the model about the available tools and request a structured decision
 }
 ```
 
-The Python controller—not the model—will validate that decision.
+## Stage 04 — Agent Loop
 
-## Phase 06 — Tool Registry
-
-Represent available tools in a controlled registry instead of hard-coded routing branches.
-
-Goals:
-- map tool names to Python functions
-- define expected arguments
-- reject unknown tools
-- reject malformed arguments
-
-## Phase 07 — Tool Calling
-
-Connect model decisions to the registry.
-
-Flow:
+Connect reasoning, execution, and results.
 
 ```text
-Natural language
-    -> local LLM
-    -> structured tool request
-    -> validation
-    -> Python tool execution
-    -> tool result
+User request
+  -> model decision
+  -> validation
+  -> tool execution
+  -> tool result
+  -> model
+  -> final response
 ```
 
-## Phase 08 — Agent Loop
+Add bounded iterations so the agent cannot loop forever.
 
-Return tool results to the model so it can formulate the final answer and, where appropriate, decide whether another safe tool call is required.
+## Stage 05 — State, Memory & Guardrails
 
-Add a strict maximum iteration count.
+Learn and implement only the state the agent needs.
 
-## Phase 09 — Memory and State
-
-Learn the difference between:
+Topics:
 - conversation history
-- temporary runtime state
+- runtime state
 - persistent memory
+- tool permissions
+- argument validation
+- timeouts and failures
+- maximum iterations
+- safe handling of side-effecting tools
 
-Add only the state that the IT agent actually needs.
+## Stage 06 — Practical IT Agent
 
-## Phase 10 — Practical IT Agent
+Grow the learning project into a useful IT support / operations agent.
 
-Expand the toolset gradually. Candidate read-only/diagnostic tools:
-
+Candidate diagnostic tools include:
 - DNS lookup
-- HTTP/HTTPS reachability check
-- local network information
+- HTTP/HTTPS reachability
+- network information
 - system information
 - service checks
 
-Each tool should have explicit inputs, predictable outputs, validation, and bounded permissions.
+Tools should stay explicit, bounded, and testable.
 
-## Phase 11 — Cloud API Comparison
+## Stage 07 — Local vs Cloud API
 
-Swap or abstract the model layer and compare the local implementation with a hosted LLM API.
+After the architecture is understood locally, abstract or swap the inference layer and compare it with a hosted LLM API.
 
-The controller and tools should remain largely unchanged.
+The core controller, validation, and tools should remain largely unchanged.
