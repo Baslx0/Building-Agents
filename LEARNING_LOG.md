@@ -1,93 +1,77 @@
 # Learning Log
 
-## Checkpoint — 18 Sep 2026
+This file preserves the small lessons, experiments, mistakes, and discoveries that lead to each stage. The source tree intentionally does **not** keep a separate Python file for every exercise.
 
-### What I am building
+## Stage 01 — Rule-Based Foundation
 
-I am learning how AI agents work by building one from Python fundamentals instead of starting with an agent framework.
+**Checkpoint: 18 Sep 2026**
 
-Long-term direction: a practical IT-oriented agent that can understand natural language, choose from controlled diagnostic tools, execute those tools through Python, and use the results to answer the user.
+The first stage started with basic Python functions and ended with a working rule-based tool system.
 
-### What I learned
+### Functions became tools
 
-#### Functions can become tools
+A function with a clear input, bounded action, and useful returned result can become an agent tool.
 
-A normal Python function becomes useful to an agent when it has a clear input, performs a bounded task, and returns a useful result.
+Current tools: `greet(name)` and `ping_host(host)`.
 
-Current tools:
+### `print()` vs `return`
 
-```python
-greet(name)
-ping_host(host)
-```
+`print()` displays something to the human. `return` gives a value back to the calling code and immediately ends the current function.
 
-#### `print` and `return` are different
+This also introduced early-return thinking and helped reduce unnecessary nesting.
 
-`print()` displays a value to a human.
+### First real system operation
 
-`return` gives a value back to the calling code and ends the current function immediately.
+`ping_host(host)` wraps Windows ping with `subprocess.run()`.
 
-This led to learning early returns as a way to avoid unnecessary nesting.
+Learned that `subprocess` is a module and `run` is a function in it; `capture_output=True` captures stdout/stderr rather than indicating success; `text=True` returns text instead of bytes; and `returncode` reports process exit status.
 
-#### A real system command can be wrapped by Python
+### Execute a tool once
 
-The first real IT tool uses:
+An early router version could call a tool while printing it and then call it again while returning it. That is harmless for `greet()`, but a side-effecting tool could perform the action twice.
 
-```python
-subprocess.run(
-    ["ping", "-n", "1", host],
-    capture_output=True,
-    text=True
-)
-```
+Lesson: execute once, keep the result, return it.
 
-Important observations:
-- `subprocess` is a module.
-- `run` is a function in that module.
-- `stdout`, `stderr`, and `returncode` are values on the returned process result.
-- `capture_output=True` captures command output; it does not mean the command succeeded.
-- a return code of `0` usually means the process completed successfully according to that program.
+### Manual routing to command parsing
 
-#### Tool execution should happen once
-
-An early router version could both print a tool call and return another call to the same tool. That would execute the tool twice.
-
-This is harmless for a greeting but dangerous for tools with side effects.
-
-Lesson: execute once, store the result, return it.
-
-#### Parsing is not language understanding
-
-The current router uses `.split()` and checks the first token.
-
-It understands:
+A numeric menu first selected between the tools. It was then replaced by simple commands:
 
 ```text
 ping google.com
+greet Basil
 ```
 
-but not:
+This introduced `.split()`, list indexes, routing, and dynamic arguments.
+
+### Validation
+
+Trying `ping` without a target exposed an `IndexError`, which introduced validation with `len(parts)`. Empty input reinforced the rule: validate before accessing indexes.
+
+### Truthiness
+
+An experiment with `if user_input == True:` exposed the difference between a non-empty string and Boolean `True`, introducing Python truthy/falsy values.
+
+### Accidental recursion
+
+One early error path called `select_tool()` from inside itself. This introduced recursion and why repeatedly calling the router from its own error branch can eventually cause a `RecursionError`.
+
+### Parser vs agent
+
+The final Stage 01 program understands explicit commands but not natural language:
 
 ```text
-Can you check whether google.com is reachable?
+ping google.com                         -> understood
+Can you check if google.com is alive?  -> not understood
 ```
 
-This is the exact boundary between the current rule-based program and the upcoming LLM-driven decision layer.
+That boundary defines the next stage.
 
-#### Validate before execution
-
-Input such as just `ping` originally caused an `IndexError` because `parts[1]` did not exist.
-
-The current version checks input length before executing a tool.
-
-### Current mental model
+### Mental model
 
 ```text
 Agent = Model + Instructions + Tools + State + Loop + Guardrails
 ```
 
-The model should understand intent and choose an allowed action. The Python controller should validate that action. The Python tool should perform the real operation.
+The model should understand intent and choose an allowed action. The Python controller should validate the choice. The Python tool should perform the real operation.
 
-### Next
-
-Use a small local LLM as the decision-making layer. Start with inference only, then structured output, then controlled tool calling.
+**Next: Stage 02 — Local LLM.**
