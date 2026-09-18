@@ -2,99 +2,68 @@
 
 A learning-by-building repository documenting my path from Python fundamentals to a real tool-using AI agent.
 
-The goal is **not** to hide agent behavior behind a framework. I am building the important pieces from first principles so I understand what the model does, what Python does, and what the tools actually execute.
+The goal is not to create a new file for every exercise or hide the mechanics behind an agent framework. Each **stage** represents a meaningful milestone and contains the best working checkpoint reached after learning several related concepts.
 
-## Current checkpoint
+## Current status
 
-**Phase 04 — Rule-Based Tool System**
+**Stage 01 — Rule-Based Foundation — Complete**
 
-The current program can:
-- expose Python functions as tools
-- execute a real Windows `ping` through `subprocess`
-- route commands to `ping_host()` or `greet()`
-- parse simple commands such as `ping google.com`
-- validate missing/invalid input
-- return tool results cleanly
-
-It is **not an AI agent yet**. Tool selection is still based on Python rules such as `if parts[0] == "ping"`.
-
-## Architecture
+The current checkpoint has real Python tools, command parsing, routing, and basic validation. It is not an AI agent yet because Python rules still decide which tool to use.
 
 ```text
-Current
-
 User
   |
   v
-Input Validation
+Parser + Validation
   |
   v
-Command Parser
-  |
-  v
-Rule-Based Router
-  |-----------------|
-  v                 v
-ping_host()       greet()
-  |                 |
-  +--------+--------+
-           |
-           v
-         Result
+Rule-Based Decision
+  |----------------|
+  v                v
+ping_host()      greet()
+  |                |
+  +-------+--------+
+          |
+          v
+        Result
 ```
 
-Next target:
+Next:
 
 ```text
 User
   |
   v
-Local LLM  <-- understands intent and chooses a tool
+Local LLM        <-- understands intent
   |
   v
-Python Controller  <-- validates the model decision
+Python Controller
   |
   v
-Tool Registry
-  |-- ping_host()
-  |-- greet()
-  |-- DNS / HTTP tools later
+Allowed Tools    <-- perform the real actions
   |
   v
 Tool Result
   |
   v
-Local LLM
-  |
-  v
 Final Response
 ```
 
-The model is the **decision maker**, not the executor. The model may decide to call `ping_host(host="google.com")`, but the Python function performs the real ping.
+The model will be the decision maker; Python tools remain the executors.
 
-## Learning roadmap
+## Stages
 
-- [x] Python functions and parameters
-- [x] `print` vs `return`
-- [x] early returns
-- [x] modules, functions, methods, and attributes
-- [x] `subprocess.run()`
-- [x] stdout, stderr, and return codes
-- [x] first real IT tool: `ping_host()`
-- [x] manual tool routing
-- [x] command parsing with `.split()`
-- [x] basic input validation
-- [ ] run a small local LLM
-- [ ] structured model decisions
-- [ ] tool registry
-- [ ] LLM-driven tool calling
-- [ ] agent loop
-- [ ] memory / state
-- [ ] guardrails and stronger validation
-- [ ] expand into a practical IT support / operations agent
-- [ ] compare local inference with a cloud LLM API
+```text
+01  Rule-Based Foundation       COMPLETE
+02  Local LLM                   NEXT
+03  Structured Tool Calling
+04  Agent Loop
+05  State, Memory & Guardrails
+06  Practical IT Agent
+07  Local vs Cloud API
+```
 
-See [ROADMAP.md](ROADMAP.md) for the phase-by-phase plan and [LEARNING_LOG.md](LEARNING_LOG.md) for what I learned along the way.
+Stages are intentionally broad. Small exercises, bugs, and discoveries are recorded in [LEARNING_LOG.md](LEARNING_LOG.md) rather than creating dozens of tiny source files.
 
 ## Repository layout
 
@@ -103,45 +72,45 @@ Building-Agents/
 |-- README.md
 |-- ROADMAP.md
 |-- LEARNING_LOG.md
-|-- src/
-|   `-- rule_based_agent.py
-`-- examples/
-    |-- 01-first-tool/
-    |   `-- ping_tool.py
-    `-- 02-manual-router/
-        `-- router.py
+`-- stages/
+    `-- 01-rule-based-foundation/
+        |-- README.md
+        `-- agent.py
 ```
 
-Future checkpoints will be added instead of replacing the learning history.
+New stage directories are created only when a meaningful milestone is reached.
 
-## Why a local model first?
+## Stage 01 capabilities
 
-The next phase intentionally uses a **small local model** before a hosted LLM API. This keeps the architecture visible: model, controller, tools, validation, and execution remain separate pieces.
-
-A cloud API can be introduced later without redesigning the whole agent; ideally only the inference layer changes.
-
-## Principles
-
-1. Understand the mechanism before adding frameworks.
-2. The LLM chooses; Python tools execute.
-3. Validate model output before executing tools.
-4. Never give a model unrestricted shell access just because it can choose tools.
-5. Keep each checkpoint small enough to understand.
-6. Preserve lessons and failed ideas, not only final code.
-
-## Current commands
+The current program can accept commands such as:
 
 ```text
 ping google.com
 greet Basil
 ```
 
-Natural-language requests such as `Can you check whether google.com is reachable?` are intentionally not supported yet. That limitation is what the next local-LLM phase will solve.
+It combines the earlier lessons around functions, return values, `subprocess`, tools, parsing, routing, and validation into one checkpoint.
+
+Natural-language requests such as:
+
+```text
+Can you check whether google.com is reachable?
+```
+
+are intentionally not supported yet. That is the problem Stage 02 will address.
+
+## Learning principles
+
+1. Build from first principles before adding frameworks.
+2. Group related learning into meaningful stages.
+3. Keep one useful code checkpoint per stage instead of one file per exercise.
+4. The LLM decides; controlled Python tools execute.
+5. Validate model decisions before executing tools.
+6. Do not give a model unrestricted shell access.
+7. Use Git history and the learning log to preserve the journey.
 
 ## Environment
 
-The current ping implementation uses Windows `ping -n 1` syntax. Cross-platform handling can be added later.
+Stage 01 currently uses Windows `ping -n 1` syntax.
 
-## Status
-
-Learning project — actively evolving.
+See [ROADMAP.md](ROADMAP.md) for where the project is going.
