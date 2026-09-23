@@ -29,12 +29,18 @@ Completed so far:
 - send the full history back to the model
 - build a continuous `while True` chat loop
 - understand the difference between LLM knowledge, RAG, and tools
-- begin understanding LLM internals: tokens, token IDs, embeddings, and learned weights
+- understand the input path from text → tokenizer → vocabulary → Token IDs → embeddings
+- understand the role of the learned Embedding Matrix
+- understand attention at a high level
+- understand next-token generation through logits → probabilities → token selection
+
+Internal LLM study stops here for now because the project goal is custom agent engineering, not LLM implementation.
 
 Next:
-- attention
-- transformer context processing
-- then move from chatting to controlled structured decisions
+- structured output
+- controlled tool decisions
+- argument validation
+- tool execution
 
 Checkpoint: `stages/02-local-llm/chat.py`.
 
