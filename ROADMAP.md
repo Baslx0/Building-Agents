@@ -1,50 +1,44 @@
 # Roadmap
 
-The repository is organized around **meaningful stages**, not individual exercises. A stage can contain several Python and agent concepts; its code represents the best checkpoint reached at the end of that stage.
+The repository is organized around **meaningful stages**, not individual exercises.
 
 ## Stage 01 — Rule-Based Foundation
 
 **Status: Complete**
 
-This stage groups everything required to build the first controlled tool system:
+Covered Python functions, return values, subprocess, simple tools, parsing, routing, and input validation.
 
-- functions and parameters
-- f-strings
-- `print()` vs `return`
-- early returns
-- modules, functions, methods, and attributes
-- `subprocess.run()`
-- stdout, stderr, and return codes
-- first real IT tool: `ping_host(host)`
-- second tool: `greet(name)`
-- manual routing
-- command parsing with `.split()`
-- list indexes and `len()`
-- basic input validation
-- controlled unsupported-tool responses
+Checkpoint: `stages/01-rule-based-foundation/agent.py`.
 
-End-of-stage checkpoint: `stages/01-rule-based-foundation/agent.py`.
+## Stage 02 — Local LLM Integration
 
-The important limitation is intentional: tool selection is still encoded with Python rules.
+**Status: In Progress**
 
-## Stage 02 — Local LLM
+Current stack:
 
-**Status: Next**
+```text
+Python → Ollama → Phi-4-mini
+```
 
-Give the system a language-understanding layer without jumping to a hosted API or agent framework.
-
-Goals:
-- choose a small model suitable for local inference
-- run the model locally
+Completed so far:
+- run a local model
 - call it from Python
-- understand prompts, responses, and the local inference boundary
-- ask it to identify intent without allowing it to execute system commands
+- use `system`, `user`, and `assistant` messages
+- understand that Ollama provides the runtime/API while Phi-4-mini is the model
+- keep conversation state in `chats_history`
+- send the full history back to the model
+- build a continuous `while True` chat loop
+- understand the difference between LLM knowledge, RAG, and tools
+- begin understanding LLM internals: tokens, token IDs, embeddings, and learned weights
 
-End goal: natural language can be converted into a proposed action.
+Next:
+- attention
+- transformer context processing
+- then move from chatting to controlled structured decisions
+
+Checkpoint: `stages/02-local-llm/chat.py`.
 
 ## Stage 03 — Structured Tool Calling
-
-Turn the model's proposed action into a controlled interface.
 
 Goals:
 - define a tool registry
@@ -54,7 +48,7 @@ Goals:
 - reject unknown tools or malformed arguments
 - execute exactly one approved Python tool
 
-Conceptual decision:
+Example:
 
 ```json
 {
@@ -79,11 +73,7 @@ User request
   -> final response
 ```
 
-Add bounded iterations so the agent cannot loop forever.
-
 ## Stage 05 — State, Memory & Guardrails
-
-Learn and implement only the state the agent needs.
 
 Topics:
 - conversation history
@@ -97,19 +87,13 @@ Topics:
 
 ## Stage 06 — Practical IT Agent
 
-Grow the learning project into a useful IT support / operations agent.
-
-Candidate diagnostic tools include:
+Candidate diagnostic tools:
 - DNS lookup
 - HTTP/HTTPS reachability
 - network information
 - system information
 - service checks
 
-Tools should stay explicit, bounded, and testable.
-
 ## Stage 07 — Local vs Cloud API
 
-After the architecture is understood locally, abstract or swap the inference layer and compare it with a hosted LLM API.
-
-The core controller, validation, and tools should remain largely unchanged.
+Compare the local inference layer with a hosted LLM API while keeping the controller, validation, and tools as stable as possible.
