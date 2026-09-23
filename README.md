@@ -7,30 +7,31 @@ The goal is not to create a new file for every exercise or hide the mechanics be
 ## Current status
 
 **Stage 01 — Rule-Based Foundation — Complete**  
-**Stage 02 — Local LLM Integration — In Progress**
+**Stage 02 — Local LLM Integration — Complete**  
+**Stage 03 — Structured Tool Calling — In Progress**
 
-The project has now moved beyond hard-coded routing and can communicate with a real local LLM through Ollama.
+The project can now convert natural-language requests into structured model decisions, validate them in Python, and execute a real approved tool.
 
 ```text
 User
   ↓
-Python
-  ↓
-Ollama
-  ↓
 Phi-4-mini
   ↓
-Assistant response
+JSON decision
+  ↓
+Python validation
+  ↓
+ping_host(host)
+  ↓
+Real result
 ```
-
-Stage 02 currently supports system instructions, conversation history, and a continuous chat loop.
 
 ## Stages
 
 ```text
 01  Rule-Based Foundation       COMPLETE
-02  Local LLM Integration      IN PROGRESS
-03  Structured Tool Calling
+02  Local LLM Integration      COMPLETE
+03  Structured Tool Calling    IN PROGRESS
 04  Agent Loop
 05  State, Memory & Guardrails
 06  Practical IT Agent
@@ -50,9 +51,12 @@ Building-Agents/
     |-- 01-rule-based-foundation/
     |   |-- README.md
     |   `-- agent.py
-    `-- 02-local-llm/
+    |-- 02-local-llm/
+    |   |-- README.md
+    |   `-- chat.py
+    `-- 03-structured-tool-calling/
         |-- README.md
-        `-- chat.py
+        `-- ping_agent.py
 ```
 
 ## Learning principles
