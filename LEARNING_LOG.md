@@ -406,3 +406,61 @@ The project remains technically clear without removing its personal learning sty
 ### Next
 
 Stage 03 is still in progress. The next goals are a real tool registry, stronger validation/error handling, more than one tool, and eventually passing tool results back into the model.
+
+
+### Tool registry and no-tool responses
+
+Stage 03 was extended with a Python tool registry:
+
+```python
+tools = {
+    "ping_host": ping_host
+}
+```
+
+The important idea is that the LLM's selected tool name becomes the dictionary key:
+
+```python
+selected_tool = tools[decision["tool"]]
+```
+
+For example:
+
+```text
+decision["tool"]
+→ "ping_host"
+
+tools[decision["tool"]]
+→ tools["ping_host"]
+
+tools["ping_host"]
+→ ping_host function
+```
+
+This removes the hard-coded direct call from the controller and introduces dynamic tool lookup.
+
+The model also gained a valid no-tool path:
+
+```json
+{
+  "tool": null,
+  "arguments": {},
+  "message": "..."
+}
+```
+
+This lets the agent answer normal questions without forcing or inventing a tool call.
+
+The system instructions were tightened so the model:
+- uses only explicitly available tools
+- does not invent tool names or arguments
+- returns `tool: null` when no tool is needed
+- writes normal answers in `message`
+- does not reveal internal registry or routing details unless directly asked
+
+The current controller can therefore choose between:
+
+```text
+real action → registered tool execution
+normal request → model message
+```
