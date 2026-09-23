@@ -12,58 +12,51 @@ Checkpoint: `stages/01-rule-based-foundation/agent.py`.
 
 ## Stage 02 — Local LLM Integration
 
-**Status: In Progress**
+**Status: Complete**
 
-Current stack:
-
-```text
-Python → Ollama → Phi-4-mini
-```
-
-Completed so far:
-- run a local model
-- call it from Python
-- use `system`, `user`, and `assistant` messages
-- understand that Ollama provides the runtime/API while Phi-4-mini is the model
-- keep conversation state in `chats_history`
-- send the full history back to the model
-- build a continuous `while True` chat loop
-- understand the difference between LLM knowledge, RAG, and tools
-- understand the input path from text → tokenizer → vocabulary → Token IDs → embeddings
-- understand the role of the learned Embedding Matrix
-- understand attention at a high level
-- understand next-token generation through logits → probabilities → token selection
-
-Internal LLM study stops here for now because the project goal is custom agent engineering, not LLM implementation.
-
-Next:
-- structured output
-- controlled tool decisions
-- argument validation
-- tool execution
+Covered:
+- local inference with Ollama + Phi-4-mini
+- `system`, `user`, and `assistant` messages
+- conversation state in `chats_history`
+- a continuous chat loop
+- the difference between LLM knowledge, RAG, and tools
+- the high-level path from tokenizer → Token IDs → embeddings → transformer/attention
+- next-token generation through logits and probabilities
 
 Checkpoint: `stages/02-local-llm/chat.py`.
 
 ## Stage 03 — Structured Tool Calling
 
-Goals:
-- define a tool registry
-- describe allowed tools and arguments
-- request structured decisions
-- parse and validate model output
-- reject unknown tools or malformed arguments
-- execute exactly one approved Python tool
+**Status: In Progress**
 
-Example:
+Completed so far:
+- instruct the LLM to return JSON only
+- use Ollama `format="json"`
+- convert the returned JSON string with `json.loads()`
+- extract the selected tool and arguments
+- validate `ping_host` and the required `host` argument
+- execute the real `ping_host(host)` function only after validation
 
-```json
-{
-  "tool": "ping_host",
-  "arguments": {
-    "host": "google.com"
-  }
-}
+Current flow:
+
+```text
+User request
+  -> Phi-4-mini
+  -> JSON decision
+  -> Python dict
+  -> validation
+  -> ping_host(host)
+  -> real result
 ```
+
+Next:
+- improve malformed/unsupported decision handling
+- define a proper tool registry
+- add another bounded tool
+- return tool results to the model
+- move toward a full agent loop
+
+Checkpoint: `stages/03-structured-tool-calling/ping_agent.py`.
 
 ## Stage 04 — Agent Loop
 
