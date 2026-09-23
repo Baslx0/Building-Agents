@@ -2,78 +2,79 @@
 
 **Status: In Progress**
 
-This stage is the first point where the local LLM stops being only a chatbot and begins acting as a decision layer for real Python tools.
+This stage now supports both controlled real tool execution and normal model replies.
 
 ## Current flow
 
 ```text
-Natural-language request
-        ↓
+User request
+    ↓
 Phi-4-mini
-        ↓
+    ↓
 Structured JSON decision
-        ↓
+    ↓
 json.loads()
-        ↓
-Python dictionary
-        ↓
-Tool + argument validation
-        ↓
-Approved Python tool
-        ↓
-Real system result
+    ↓
+Python controller
+    ↓
+    ├─ tool selected → validate registry + arguments → execute tool
+    └─ tool = null   → print normal model response
 ```
 
-## Current example
+## Tool registry
 
-User:
+The controller now uses a Python dictionary as a registry:
 
-```text
-can u ping 8.8.8.8 ?
+```python
+tools = {
+    "ping_host": ping_host
+}
 ```
 
-Model decision:
+The model returns a tool name such as:
 
 ```json
 {
   "tool": "ping_host",
   "arguments": {
-    "host": "8.8.8.8"
-  }
+    "host": "google.com"
+  },
+  "message": null
 }
 ```
 
-Python then validates the tool name and required `host` argument before calling:
+Python then uses the model's choice as the registry key:
 
 ```python
-ping_host(host)
+selected_tool = tools[decision["tool"]]
 ```
 
-## Concepts learned
+That retrieves the real Python function, which can then be executed.
 
-- structured model output
-- `format="json"` with Ollama
-- JSON text vs Python dictionaries
-- `json.loads()`
-- reading nested values such as `decision["arguments"]["host"]`
-- validating a model decision before execution
-- keeping the LLM as the decision maker while Python remains the controller
-- executing a real bounded tool only after validation
+## No-tool path
+
+The model is also allowed to decide that no real tool is needed:
+
+```json
+{
+  "tool": null,
+  "arguments": {},
+  "message": "A normal user-facing response."
+}
+```
+
+In that case, Python prints `message` and does not execute anything.
+
+## Rules learned
+
+- the LLM proposes a tool name
+- Python validates that the tool exists in the registry
+- the registry maps the tool name to a real Python function
+- the model must not invent unavailable tools
+- normal questions can be answered through `message`
+- real system actions require a registered tool
+- internal registry details should not be exposed in user-facing replies
 
 ## Current limitation
 
-The validation is intentionally simple and only supports one tool:
-
-```text
-ping_host(host)
-```
-
-The project does not yet have:
-- a tool registry
-- robust malformed-JSON handling
-- schema validation
-- multiple tools
-- tool-result feedback back into the LLM
-- a full agent reasoning/execution loop
-
-Those are the next milestones.
+Stage 03 still only has one real tool and basic argument validation. The next steps are stronger validation, another tool, and feeding tool results back into the model.
