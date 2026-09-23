@@ -298,3 +298,111 @@ Memory / State
 ↓
 Guardrails
 ```
+
+
+---
+
+## Stage 03 — Structured Tool Calling
+
+**Checkpoint: 23 Sep 2026**
+
+The project crossed the first real boundary from local chatbot behavior into controlled tool execution.
+
+### Structured decisions
+
+The system instruction was changed so Phi-4-mini returns a JSON decision instead of a conversational answer.
+
+Example:
+
+```json
+{
+  "tool": "ping_host",
+  "arguments": {
+    "host": "8.8.8.8"
+  }
+}
+```
+
+### JSON to Python
+
+The returned JSON is text, so Python converts it using:
+
+```python
+decision = json.loads(reply["content"])
+```
+
+This creates a Python dictionary that can be accessed with:
+
+```python
+decision["tool"]
+decision["arguments"]["host"]
+```
+
+### Validation before execution
+
+The controller checks that:
+- the requested tool is `ping_host`
+- the required `host` argument exists
+
+Only after those checks does Python execute the tool.
+
+### First LLM-selected real tool execution
+
+The working path is now:
+
+```text
+Natural language
+↓
+Phi-4-mini
+↓
+Structured JSON decision
+↓
+json.loads()
+↓
+Python validation
+↓
+ping_host(host)
+↓
+Windows ping
+↓
+Real result
+```
+
+This confirms the core architecture:
+
+```text
+LLM decides
+Python validates
+Tool executes
+```
+
+### Small Python lesson
+
+Using:
+
+```python
+host = {decision["arguments"]["host"]}
+```
+
+created a Python `set`, not a string.
+
+The correct assignment is:
+
+```python
+host = decision["arguments"]["host"]
+```
+
+### Current personality
+
+Unsupported requests currently keep a deliberate learning-project touch:
+
+```text
+wallahy shooof . . .
+[!] Unsupported or invalid tool request
+```
+
+The project remains technically clear without removing its personal learning style.
+
+### Next
+
+Stage 03 is still in progress. The next goals are a real tool registry, stronger validation/error handling, more than one tool, and eventually passing tool results back into the model.
