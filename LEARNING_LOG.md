@@ -177,3 +177,124 @@ Important corrections:
 The project now has a stateful local chatbot running entirely through Python + Ollama + Phi-4-mini.
 
 Next learning topic: **attention and transformer context processing**, before moving into structured tool calling.
+
+
+### Tokenizer, vocabulary, and Token IDs
+
+The text-to-model boundary was clarified:
+
+```text
+User text
+↓
+Tokenizer
+↓
+Tokens
+↓
+Vocabulary lookup
+↓
+Token IDs
+↓
+LLM
+```
+
+Important points:
+- the tokenizer is a preprocessing component associated with the model
+- the vocabulary is the mapping between token pieces and fixed Token IDs
+- the tokenizer performs the splitting and lookup
+- the model receives Token IDs, not raw text
+- Token IDs are identifiers, not semantic weights
+
+A useful mental model became:
+
+```text
+Tokenizer = splitting + vocabulary lookup + Token ID output
+Vocabulary = token pieces + their IDs
+```
+
+### Embedding Matrix and embeddings
+
+Inside the model:
+
+```text
+Token ID
+↓
+lookup in Embedding Matrix
+↓
+Embedding Vector
+```
+
+The Embedding Matrix is a learned parameter table created during training.
+
+The Token ID acts as an index. The selected vector is the embedding for that token.
+
+Important distinction:
+
+```text
+Embedding Matrix = the learned table
+Lookup           = the retrieval operation
+Embedding        = the retrieved vector
+```
+
+### Transformer and attention
+
+The embeddings are then processed using learned weights.
+
+A simplified view:
+
+```text
+Embeddings
+↓
+learned transformations
+↓
+Q / K / V
+↓
+Attention
+↓
+context-aware representations
+```
+
+The project intentionally stops before deep transformer mathematics because the goal is custom agent engineering rather than LLM implementation.
+
+### How the model generates a reply
+
+After processing the current context, the model produces scores for possible next tokens.
+
+```text
+Processed context
+↓
+Logits
+↓
+Probabilities
+↓
+Choose next token
+↓
+Append to context
+↓
+Repeat
+```
+
+The response is therefore generated token by token.
+
+### Scope checkpoint
+
+For the current project, the internal LLM understanding is now sufficient.
+
+The next focus returns to practical agent architecture:
+
+```text
+Prompt / Instructions
+↓
+Structured Output
+↓
+Tool Selection
+↓
+Argument Validation
+↓
+Tool Execution
+↓
+Agent Loop
+↓
+Memory / State
+↓
+Guardrails
+```
