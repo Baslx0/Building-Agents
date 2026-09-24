@@ -464,3 +464,31 @@ The current controller can therefore choose between:
 real action → registered tool execution
 normal request → model message
 ```
+
+
+### Stage 03 structure cleanup
+
+The first structured-tool agent was reorganized into its own folder:
+
+```text
+agent-1/
+├── agent.py
+├── tools.py
+├── prompts/
+│   └── system.md
+└── data/
+    └── chat_history.json
+```
+
+This separates four concerns:
+
+```text
+controller      → agent.py
+capabilities    → tools.py
+instructions    → prompts/system.md
+conversation    → data/chat_history.json
+```
+
+The system prompt is no longer embedded directly inside Python code, and conversation history is no longer mixed with the system instructions. `agent.py` loads both at runtime and combines them only when building the message context for Ollama.
+
+The history file starts as an empty JSON list and is saved after each model response, making conversation state persistent across program restarts.
