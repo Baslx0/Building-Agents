@@ -2,28 +2,66 @@
 
 **Status: In Progress**
 
-This stage now supports both controlled real tool execution and normal model replies.
+This stage now separates the agent controller, executable tools, system instructions, and persistent conversation data.
+
+## Current structure
+
+```text
+03-structured-tool-calling/
+├── README.md
+└── agent-1/
+    ├── agent.py
+    ├── tools.py
+    ├── prompts/
+    │   └── system.md
+    └── data/
+        └── chat_history.json
+```
+
+## Responsibility split
+
+```text
+agent.py
+= controller/runtime
+
+tools.py
+= executable capabilities
+
+prompts/system.md
+= agent behavior + routing instructions
+
+data/chat_history.json
+= persistent user/assistant conversation history
+```
+
+The system prompt is intentionally kept separate from conversation history. At runtime, `agent.py` loads both and builds the context sent to Phi-4-mini.
 
 ## Current flow
 
 ```text
+system.md
+    ↓
+agent.py loads instructions
+
+chat_history.json
+    ↓
+agent.py loads conversation state
+
 User request
     ↓
 Phi-4-mini
     ↓
 Structured JSON decision
     ↓
-json.loads()
-    ↓
 Python controller
     ↓
-    ├─ tool selected → validate registry + arguments → execute tool
+    ├─ tool selected → registry validation → execute tool
     └─ tool = null   → print normal model response
 ```
 
 ## Tool registry
 
-The controller now uses a Python dictionary as a registry:
+The controller currently uses:
 
 ```python
 tools = {
@@ -31,50 +69,31 @@ tools = {
 }
 ```
 
-The model returns a tool name such as:
-
-```json
-{
-  "tool": "ping_host",
-  "arguments": {
-    "host": "google.com"
-  },
-  "message": null
-}
-```
-
-Python then uses the model's choice as the registry key:
+The model's tool choice becomes the registry key:
 
 ```python
 selected_tool = tools[decision["tool"]]
 ```
 
-That retrieves the real Python function, which can then be executed.
+## Persistent history
 
-## No-tool path
-
-The model is also allowed to decide that no real tool is needed:
+Conversation history is stored as JSON rather than being mixed with system instructions:
 
 ```json
-{
-  "tool": null,
-  "arguments": {},
-  "message": "A normal user-facing response."
-}
+[
+  {
+    "role": "user",
+    "content": "..."
+  },
+  {
+    "role": "assistant",
+    "content": "..."
+  }
+]
 ```
 
-In that case, Python prints `message` and does not execute anything.
-
-## Rules learned
-
-- the LLM proposes a tool name
-- Python validates that the tool exists in the registry
-- the registry maps the tool name to a real Python function
-- the model must not invent unavailable tools
-- normal questions can be answered through `message`
-- real system actions require a registered tool
-- internal registry details should not be exposed in user-facing replies
+The controller loads this history at startup and saves it after each model response.
 
 ## Current limitation
 
-Stage 03 still only has one real tool and basic argument validation. The next steps are stronger validation, another tool, and feeding tool results back into the model.
+Stage 03 still has one real tool and basic argument validation. The next steps are richer tool metadata, stronger validation, and more tools.
