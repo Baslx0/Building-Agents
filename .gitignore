@@ -8,3 +8,5 @@ venv/
 .vscode/
 .idea/
 .DS_Store
+stages/03-structured-tool-calling/agent-1/data/*
+!stages/03-structured-tool-calling/agent-1/data/.gitkeep
