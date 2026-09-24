@@ -21,8 +21,13 @@ tools = {  # Create a registry that maps model-selected tool names to real Pytho
 with open(SYSTEM_PROMPT_PATH, "r", encoding="utf-8") as file:  # Open the external system prompt
     system_prompt = file.read()  # Read the complete agent instructions into Python
 
-with open(CHAT_HISTORY_PATH, "r", encoding="utf-8") as file:  # Open the saved conversation history
-    chats_history = json.load(file)  # Convert the JSON history into a Python list
+CHAT_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)  # Make sure the local data folder exists
+
+if CHAT_HISTORY_PATH.exists():  # Check whether a local chat history file already exists
+    with open(CHAT_HISTORY_PATH, "r", encoding="utf-8") as file:  # Open the saved conversation history
+        chats_history = json.load(file)  # Convert the JSON history into a Python list
+else:
+    chats_history = []  # Start with an empty history on the first run
 
 print("Hello I'm IT Agent built by @Baslx0")  # Print a startup message when the program starts
 print("How can I help you?")  # Print a simple welcome message for the user
