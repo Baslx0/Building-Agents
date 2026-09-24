@@ -56,7 +56,13 @@ Building-Agents/
     |   `-- chat.py
     `-- 03-structured-tool-calling/
         |-- README.md
-        `-- ping_agent.py
+        `-- agent-1/
+            |-- agent.py
+            |-- tools.py
+            |-- prompts/
+            |   `-- system.md
+            `-- data/
+                `-- chat_history.json
 ```
 
 ## Learning principles
