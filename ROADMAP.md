@@ -51,12 +51,12 @@ User request
 
 Next:
 - improve malformed/unsupported decision handling
-- define a proper tool registry
+- enrich the tool registry with per-tool metadata
 - add another bounded tool
 - return tool results to the model
 - move toward a full agent loop
 
-Checkpoint: `stages/03-structured-tool-calling/ping_agent.py`.
+Checkpoint: `stages/03-structured-tool-calling/agent-1/agent.py`.
 
 ## Stage 04 — Agent Loop
 
