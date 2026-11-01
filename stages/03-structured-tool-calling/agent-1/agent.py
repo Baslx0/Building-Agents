@@ -11,8 +11,12 @@ CHAT_HISTORY_PATH = BASE_DIR / "data" / "chat_history.json"  # Point to the pers
 
 
 #-------------------- Tools -----------------------------#
-tools = {  # Create a registry that maps model-selected tool names to real Python functions
-    "ping_host": ping_host
+# Create a registry that maps model-selected tool names to real Python functions
+tools = { 
+    "ping_host": {
+        "function": ping_host,
+        "required_args": ["host"]
+    }
 }
 #-------------------- Tools -----------------------------#
 
@@ -79,21 +83,27 @@ while True:  # Keep the agent running until the user explicitly exits
 
     reply = Chat_agent(user_input)  # Ask the model to classify the request and return a structured decision
     decision = json.loads(reply["content"])  # Convert the model's JSON string into a Python dictionary
-    print(reply["content"])  # Print the raw structured model response for learning/debugging
-
-    if decision["tool"] in tools and "host" in decision["arguments"]:  # Validate the registered tool and required argument
-        host = decision["arguments"]["host"]  # Extract the host/domain/IP chosen by the model
+    #print(reply["content"])  # Print the raw structured model response for learning/debugging
+    
+    tool_info = tools[decision["tool"]]
+    required_args = tool_info["required_args"]
+    all_args_present = all(
+        arg in decision["arguments"]
+        for arg in required_args)
+    
+    if all_args_present:
+        print(tool_info)
 
         print("\n[✓] Decision validated")  # Confirm that the model's tool decision passed validation
         print(f"[→] Tool   : {decision['tool']}")  # Show the selected tool name
-        print(f"[→] Target : {host}")  # Show the target that will be passed to the tool
+        print(f"[→] Target : {decision["arguments"]}")  # Show the target that will be passed to the tool
         print("[…] Executing tool...")  # Show that real system execution is about to begin
-
         selected_tool = tools[decision["tool"]]  # Use the model's tool choice as the registry key
-        use_tool = selected_tool(host)  # Execute the retrieved function with the validated host argument
-
+        use_tool = selected_tool(tool_info["function"])  # Execute the retrieved function with the validated host argument
         print(f"[✓] Result : {use_tool}")  # Print the real result returned by the tool
+        print(all_args_present)
         print("-" * 60)  # Print a separator before the next user request
 
     elif decision["tool"] is None:  # Handle requests that do not require or match a real tool
         print(decision["message"])  # Print the model's user-facing answer instead of executing anything
+
