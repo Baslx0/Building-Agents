@@ -29,6 +29,7 @@ class State:
         self.cancel_scan = threading.Event()
         self.cleaner = CleanupEngine()
         self.candidates = None
+        self.cache = {'status': 'idle', 'progress': '', 'result': None}
         self.model = DEFAULT_MODEL
         # Never write reports or personal filenames into the GitHub repository.
         self.audit_path = Path(os.environ.get('LOCALAPPDATA') or Path.home()) / 'WindowsCleanupAgent' / 'audit.jsonl'
@@ -70,23 +71,72 @@ class State:
                     self.scan.update(status='cancelled' if result.get('cancelled') else 'complete', result=result,
                                      progress='Finished' if not result.get('cancelled') else 'Cancelled')
                 if not result.get('cancelled'):
-                    self.activity('scan', {'path': str(system_drive), 'warnings': result['errors']})
+                    self.activity('scan', {'path': str(system_drive), 'warnings': result['errors'],
+                                           'files_seen': result.get('files_seen', 0),
+                                           'truncated': result.get('truncated', False)})
             except Exception as exc:
                 with self.lock:
                     self.scan.update(status='error', progress=f'{type(exc).__name__}: {exc}')
         threading.Thread(target=worker, daemon=True).start()
         return {'status': 'running'}
 
+    def start_cache_scan(self) -> dict:
+        with self.lock:
+            if self.cache['status'] == 'running':
+                return {'status': 'running', 'progress': self.cache['progress']}
+            self.cache = {'status': 'running', 'progress': 'Locating known caches...', 'result': None}
+            self.candidates = None
+
+        def worker():
+            try:
+                def update(source):
+                    with self.lock:
+                        self.cache['progress'] = source
+                # Windows-only real cache discovery; fixture tests use engine directly.
+                report = self.cleaner.discover(update)
+                with self.lock:
+                    self.candidates = report
+                    self.cache = {'status': 'complete', 'progress': 'Finished', 'result': report}
+                self.activity('cache_audit', {'sources': len(report['sources']),
+                                               'eligible_bytes': report['total_bytes'],
+                                               'limited': report['limited']})
+            except Exception as exc:
+                with self.lock:
+                    self.cache.update(status='error', progress=f'{type(exc).__name__}: {exc}')
+        threading.Thread(target=worker, daemon=True).start()
+        return {'status': 'running'}
+
     def tool_summary(self, name: str) -> dict:
+        # All callbacks are controlled application functions; no model-supplied
+        # paths, commands, file names or deletion IDs are accepted here.
+        if name == 'start_disk_scan':
+            try:
+                return self.start_scan()
+            except ValueError as exc:
+                return {'status': 'running', 'message': str(exc)}
+        if name == 'start_cache_audit':
+            return self.start_cache_scan()
         with self.lock:
             if name == 'get_disk_summary':
-                scan = self.scan['result']
-                return {'status': self.scan['status'], 'result': (dict(scan, folders=scan.get('folders', [])[:10]) if scan else None)}
-            if name == 'get_temp_candidates':
-                items = (self.candidates or {}).get('items', [])
-                return {'scanned': self.candidates is not None, 'count': len(items),
-                        'eligible_bytes': sum(x['bytes'] for x in items),
-                        'biggest': [{'bytes': x['bytes'], 'age_days': x['age_days']} for x in items[:6]]}
+                r = self.scan['result']
+                return {'status': self.scan['status'], 'progress': self.scan['progress'],
+                        'result': ({'total': r['total'], 'free': r['free'], 'used': r['used'],
+                                    'folders': r.get('folders', [])[:12], 'files_seen': r.get('files_seen', 0),
+                                    'errors': r['errors'], 'truncated': r.get('truncated', False)} if r and 'total' in r else None)}
+            if name == 'get_largest_files':
+                r = self.scan['result'] or {}
+                return {'status': self.scan['status'], 'largest_files': r.get('largest_files', [])[:20],
+                        'file_types': r.get('file_types', [])[:10],
+                        'complete': self.scan['status'] == 'complete' and not r.get('truncated') and not r.get('errors')}
+            if name in ('get_temp_candidates', 'get_cache_overview'):
+                r = self.candidates or {}
+                return {'status': self.cache['status'], 'progress': self.cache['progress'],
+                        'source_count': len(r.get('sources', [])), 'total_eligible_bytes': r.get('total_bytes', 0),
+                        'inspected_bytes': r.get('inspected_bytes', 0),
+                        'limited': r.get('limited', False),
+                        'sources': [{k: s[k] for k in ('label', 'category', 'path', 'bytes', 'eligible_bytes',
+                                    'cleanable', 'risk', 'limited', 'note')}
+                                    for s in r.get('sources', [])[:18]]}
             if name == 'get_activity':
                 return {'events': [{k: v for k, v in record.items() if k != 'path'} for record in self.history()[:8]]}
             return {'error': 'Tool not permitted'}
@@ -96,7 +146,7 @@ STATE = State()
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = 'LocalDiskDashboard/1.0'
+    server_version = 'DiskPilot/2.0'
 
     def log_message(self, fmt, *args):
         # Do not spam user's terminal with chat text or file names.
@@ -143,12 +193,15 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/api/status':
             return self._send(200, {'csrf': STATE.csrf, 'model': STATE.model, 'models': installed_models(),
                       'platform': os.name, 'temp_available': STATE.cleaner.root is not None,
-                      'scan': STATE.scan})
+                      'scan': STATE.scan, 'cache': STATE.cache})
         if self.path == '/api/scan':
             with STATE.lock:
                 return self._send(200, dict(STATE.scan))
         if self.path == '/api/candidates':
-            return self._send(200, STATE.candidates or {'available': False, 'items': [], 'reason': 'Run Find cleanup candidates first'})
+            return self._send(200, STATE.candidates or {'available': False, 'items': [], 'sources': [], 'reason': 'Run the cache audit first'})
+        if self.path == '/api/caches':
+            with STATE.lock:
+                return self._send(200, dict(STATE.cache))
         if self.path == '/api/activity':
             return self._send(200, {'entries': STATE.history()})
         self._send(404, {'error': 'Not found'})
@@ -168,9 +221,8 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == '/api/scan/cancel':
                 STATE.cancel_scan.set()
                 return self._send(200, {'cancel_requested': True})
-            if self.path == '/api/candidates/refresh':
-                STATE.candidates = STATE.cleaner.discover()
-                return self._send(200, STATE.candidates)
+            if self.path in ('/api/caches/start', '/api/candidates/refresh'):
+                return self._send(200, STATE.start_cache_scan())
             if self.path == '/api/plan':
                 return self._send(200, STATE.cleaner.make_plan(body.get('ids', [])))
             if self.path == '/api/execute':
@@ -179,7 +231,8 @@ class Handler(BaseHTTPRequestHandler):
                     STATE.activity('cleanup', {'deleted': sum(x['status'] == 'deleted' for x in result['results']),
                                                'freed_estimate': result['freed_estimate'],
                                                'failed': sum(x['status'] != 'deleted' for x in result['results'])})
-                    STATE.candidates = STATE.cleaner.discover()
+                    STATE.candidates = None
+                    STATE.cache = {'status': 'idle', 'progress': 'Re-run cache audit after cleanup', 'result': None}
                 return self._send(200, result)
             if self.path == '/api/model':
                 model = body.get('model', '')

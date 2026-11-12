@@ -42,9 +42,9 @@ class TestCleanup(unittest.TestCase):
             self.engine.execute(plan['plan_id'], 'yes')
         self.assertTrue(target.exists())
         with self.assertRaises(ValueError):
-            self.engine.execute(plan['plan_id'], 'DELETE TEMP FILES')
+            self.engine.execute(plan['plan_id'], 'DELETE SELECTED FILES')
         plan = self.engine.make_plan([item['id']])
-        result = self.engine.execute(plan['plan_id'], 'DELETE TEMP FILES')
+        result = self.engine.execute(plan['plan_id'], 'DELETE SELECTED FILES')
         self.assertEqual(result['freed_estimate'], 3)
         self.assertFalse(target.exists())
 
@@ -53,7 +53,7 @@ class TestCleanup(unittest.TestCase):
         item = self.engine.discover()['items'][0]
         plan = self.engine.make_plan([item['id']])
         target.write_bytes(b'changed')
-        result = self.engine.execute(plan['plan_id'], 'DELETE TEMP FILES')
+        result = self.engine.execute(plan['plan_id'], 'DELETE SELECTED FILES')
         self.assertEqual(result['results'][0]['status'], 'skipped')
         self.assertTrue(target.exists())
 

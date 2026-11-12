@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 import os
+import heapq
 from pathlib import Path
 import secrets
 import shutil
@@ -16,11 +17,13 @@ import threading
 import time
 from typing import Callable
 
+from inventory import CacheSource, windows_cache_sources
+
 REPARSE = getattr(stat, 'FILE_ATTRIBUTE_REPARSE_POINT', 0x400)
-DENIED_EXT = {'.exe', '.dll', '.sys', '.msi', '.msp', '.ps1', '.bat', '.cmd', '.vbs', '.reg', '.com'}
+DENIED_EXT = {'.exe', '.dll', '.sys', '.msi', '.msp', '.ps1', '.bat', '.cmd', '.vbs', '.reg', '.com', '.db', '.sqlite', '.sqlite3', '.ldb', '.lock', '.wal', '.journal', '.json', '.ini', '.yaml', '.yml'}
 MIN_AGE_DAYS = 7
-MAX_FILE_BYTES = 250 * 1024 * 1024
-MAX_CANDIDATES = 500
+MAX_FILE_BYTES = 1024 * 1024 * 1024
+MAX_CANDIDATES = 1200
 PLAN_LIFETIME = 600
 
 
@@ -73,25 +76,51 @@ def current_temp_root() -> Path | None:
 
 
 def disk_scan(path: Path, cancel: threading.Event, progress: Callable[[str], None] | None = None) -> dict:
-    """Scans immediate child folder sizes iteratively without following links.
+    """Traverse C read-only: top folders, largest files and broad file types.
 
-    Estimates may exclude inaccessible, reparse-point, or changing files.
+    Never follows junctions or symlinks. Scan limits are disclosed, never
+    silently presented as a complete inventory. Does not read file contents.
     """
     root = path.resolve(strict=True)
     if not root.is_dir():
         raise ValueError('Scan path must be a directory')
     usage = shutil.disk_usage(root)
-    folders = []
-    errors = 0
-    skipped = 0
-    with os.scandir(root) as entries:
-        children = list(entries)
+    folders, largest, types = [], [], {}
+    errors = skipped = files_seen = scanned = 0
+    capped = False
+    MAX_ENTRIES = 850000
+
+    def include_file(entry):
+        nonlocal files_seen, scanned, capped
+        st = entry.stat(follow_symlinks=False)
+        files_seen += 1
+        scanned += st.st_size
+        if files_seen >= MAX_ENTRIES:
+            capped = True
+        suffix = Path(entry.name).suffix.lower() or '[no extension]'
+        types[suffix] = types.get(suffix, 0) + st.st_size
+        if st.st_size >= 32 * 1024 ** 2:
+            item = (st.st_size, str(entry.path))
+            if len(largest) < 40:
+                heapq.heappush(largest, item)
+            elif item > largest[0]:
+                heapq.heapreplace(largest, item)
+        return st.st_size
+
+    try:
+        with os.scandir(root) as entries:
+            children = list(entries)
+    except OSError as exc:
+        raise ValueError(f'Cannot inspect selected drive: {exc}') from exc
     for entry in children:
-        if cancel.is_set():
-            return {'cancelled': True, 'folders': folders}
+        if cancel.is_set() or capped:
+            break
         try:
             if entry.is_symlink() or _reparse(Path(entry.path)):
                 skipped += 1
+                continue
+            if entry.is_file(follow_symlinks=False):
+                include_file(entry)
                 continue
             if not entry.is_dir(follow_symlinks=False):
                 continue
@@ -99,14 +128,15 @@ def disk_scan(path: Path, cancel: threading.Event, progress: Callable[[str], Non
             errors += 1
             continue
         if progress:
-            progress(entry.name)
-        total = 0
-        pending = [Path(entry.path)]
-        while pending and not cancel.is_set():
+            progress(f'{entry.name} · {files_seen:,} files')
+        total, pending = 0, [Path(entry.path)]
+        while pending and not cancel.is_set() and not capped:
             folder = pending.pop()
             try:
                 with os.scandir(folder) as items:
                     for item in items:
+                        if cancel.is_set() or capped:
+                            break
                         try:
                             if item.is_symlink() or _reparse(Path(item.path)):
                                 skipped += 1
@@ -114,7 +144,7 @@ def disk_scan(path: Path, cancel: threading.Event, progress: Callable[[str], Non
                             if item.is_dir(follow_symlinks=False):
                                 pending.append(Path(item.path))
                             elif item.is_file(follow_symlinks=False):
-                                total += item.stat(follow_symlinks=False).st_size
+                                total += include_file(item)
                         except OSError:
                             errors += 1
             except OSError:
@@ -123,8 +153,12 @@ def disk_scan(path: Path, cancel: threading.Event, progress: Callable[[str], Non
     if cancel.is_set():
         return {'cancelled': True, 'folders': folders}
     return {'path': str(root), 'total': usage.total, 'used': usage.used, 'free': usage.free,
-            'folders': sorted(folders, key=lambda x: x['bytes'], reverse=True)[:25],
-            'errors': errors, 'skipped_links': skipped, 'scanned_at': datetime.now(timezone.utc).isoformat()}
+            'folders': sorted(folders, key=lambda x: x['bytes'], reverse=True)[:30],
+            'largest_files': [{'bytes': n, 'path': p} for n, p in sorted(largest, reverse=True)[:30]],
+            'file_types': [{'extension': ext, 'bytes': n} for ext, n in sorted(types.items(), key=lambda x: x[1], reverse=True)[:12]],
+            'scanned_bytes': scanned, 'files_seen': files_seen,
+            'truncated': capped, 'errors': errors, 'skipped_links': skipped,
+            'scanned_at': datetime.now(timezone.utc).isoformat()}
 
 
 @dataclass(frozen=True)
@@ -136,23 +170,30 @@ class Candidate:
     inode: int
     device: int
     age_days: int
+    category: str = "user-temp"
+    risk: str = "low"
 
     def public(self) -> dict:
-        return {'id': self.id, 'path': self.path, 'bytes': self.bytes, 'age_days': self.age_days}
+        return {'id': self.id, 'path': self.path, 'bytes': self.bytes, 'age_days': self.age_days, 'category': self.category, 'risk': self.risk}
 
 
 class CleanupEngine:
-    """Scoped TEMP-only file cleaner. Injectable temp_root solely for offline tests."""
+    """Allowlisted caches only. Injectable roots for isolated fixture testing."""
 
-    def __init__(self, temp_root: Path | None = None):
+    def __init__(self, temp_root: Path | None = None, sources: list[CacheSource] | None = None):
         self.root = temp_root if temp_root is not None else current_temp_root()
+        self.sources = (sources if sources is not None else
+                        ([CacheSource('user-temp', 'Test Temp', temp_root, 'Temporary', True, 'low', 'Fixture')]
+                         if temp_root is not None else windows_cache_sources() ))
         self.candidates: dict[str, Candidate] = {}
         self.plans: dict[str, dict] = {}
         self.lock = threading.RLock()
-        self._testing = temp_root is not None
+        self._testing = temp_root is not None or sources is not None
 
     def _snapshot(self, path: Path, now: float | None = None) -> Candidate | None:
-        if not self.root or not _safe_descendant(path, self.root):
+        # A source is controlled by Python's explicit local allowlist, never LLM input.
+        source = next((src for src in self.sources if src.cleanable and _safe_descendant(path, src.path)), None)
+        if source is None:
             return None
         try:
             st = path.lstat()
@@ -164,50 +205,80 @@ class CleanupEngine:
             if st.st_size > MAX_FILE_BYTES or path.suffix.lower() in DENIED_EXT:
                 return None
             return Candidate(secrets.token_hex(8), str(path), st.st_size,
-                             st.st_mtime_ns, st.st_ino, st.st_dev, int(age // 86400))
+                             st.st_mtime_ns, st.st_ino, st.st_dev, int(age // 86400), source.key, source.risk)
         except OSError:
             return None
 
-    def discover(self) -> dict:
-        """Find up to MAX_CANDIDATES old, eligible files in one approved root."""
+    def discover(self, progress: Callable[[str], None] | None = None) -> dict:
+        """Inventory supported locations and collect eligible files for approval.
+
+        Both read-only and cleanable sources are measured. Measurements are
+        bounded; truncated sources are explicitly marked incomplete.
+        """
         with self.lock:
+            if not self._testing and os.name == 'nt':
+                self.sources = windows_cache_sources()  # discover new browser profiles
             self.candidates.clear()
             self.plans.clear()
-            root = self.root
-            if not root or not root.is_dir() or _reparse(root):
-                return {'available': False, 'reason': 'Windows user Temp folder not available', 'items': [], 'total_bytes': 0}
-            pending = [root]
-            visited = 0
-            skipped = 0
-            while pending and len(self.candidates) < MAX_CANDIDATES and visited < 15000:
-                folder = pending.pop()
-                try:
-                    with os.scandir(folder) as entries:
-                        for entry in entries:
-                            if visited >= 15000 or len(self.candidates) >= MAX_CANDIDATES:
-                                break
-                            visited += 1
-                            p = Path(entry.path)
-                            try:
-                                if _reparse(p):
-                                    skipped += 1
-                                elif entry.is_dir(follow_symlinks=False):
-                                    pending.append(p)
-                                elif entry.is_file(follow_symlinks=False):
-                                    item = self._snapshot(p)
-                                    if item:
-                                        self.candidates[item.id] = item
+            rows, total_eligible = [], 0
+            visited_total = 0
+            for source in self.sources:
+                if progress:
+                    progress(source.label)
+                if not source.path.is_dir() or _reparse(source.path):
+                    continue
+                count = bytes_found = eligible = eligible_bytes = skipped = errors = visited = 0
+                pending = [source.path]
+                # Per-source limit ensures one massive browser cache doesn't
+                # hide all other categories. Never follow links/reparse points.
+                while pending and visited < 75000 and visited_total < 400000:
+                    folder = pending.pop()
+                    try:
+                        with os.scandir(folder) as entries:
+                            for entry in entries:
+                                if visited >= 75000 or visited_total >= 400000:
+                                    break
+                                visited += 1
+                                visited_total += 1
+                                p = Path(entry.path)
+                                try:
+                                    if _reparse(p):
+                                        skipped += 1
+                                    elif entry.is_dir(follow_symlinks=False):
+                                        pending.append(p)
+                                    elif entry.is_file(follow_symlinks=False):
+                                        st = entry.stat(follow_symlinks=False)
+                                        count += 1
+                                        bytes_found += st.st_size
+                                        if source.cleanable and len(self.candidates) < MAX_CANDIDATES:
+                                            item = self._snapshot(p)
+                                            if item is not None:
+                                                self.candidates[item.id] = item
+                                                eligible += 1
+                                                eligible_bytes += item.bytes
                                     else:
                                         skipped += 1
-                            except OSError:
-                                skipped += 1
-                except OSError:
-                    skipped += 1
+                                except OSError:
+                                    errors += 1
+                    except OSError:
+                        errors += 1
+                item = source.public()
+                item.update(bytes=bytes_found, file_count=count,
+                            eligible_bytes=eligible_bytes, eligible_count=eligible,
+                            skipped=skipped, errors=errors,
+                            limited=bool(pending) or visited >= 75000 or visited_total >= 400000 or
+                            (source.cleanable and len(self.candidates) >= MAX_CANDIDATES))
+                rows.append(item)
+                total_eligible += eligible_bytes
             items = sorted(self.candidates.values(), key=lambda x: x.bytes, reverse=True)
-            return {'available': True, 'root': str(root), 'items': [x.public() for x in items],
-                    'total_bytes': sum(x.bytes for x in items), 'skipped': skipped,
-                    'limited': bool(pending) or visited >= 15000,
-                    'policy': 'Only regular files at least 7 days old in your own user Temp folder; no executables or links.'}
+            rows.sort(key=lambda x: x['bytes'], reverse=True)
+            return {'available': bool(rows), 'sources': rows,
+                    'root': str(self.root or ''), 'items': [x.public() for x in items],
+                    'total_bytes': total_eligible, 'inspected_bytes': sum(s['bytes'] for s in rows),
+                    'skipped': sum(s['skipped'] for s in rows),
+                    'errors': sum(s['errors'] for s in rows),
+                    'limited': any(s['limited'] for s in rows),
+                    'policy': 'Known cache locations only. Only selected regular files >=7 days old in explicitly allowlisted user cache directories can be deleted.'}
 
     def make_plan(self, ids: list[str]) -> dict:
         with self.lock:
@@ -226,7 +297,7 @@ class CleanupEngine:
             self.plans[plan_id] = {'ids': tuple(ids), 'created': time.monotonic()}
             return {'plan_id': plan_id, 'expires_in_seconds': PLAN_LIFETIME,
                     'items': [x.public() for x in selected], 'total_bytes': sum(x.bytes for x in selected),
-                    'confirmation': 'DELETE TEMP FILES', 'warning': 'Permanent deletion. Cannot be undone.'}
+                    'confirmation': 'DELETE SELECTED FILES', 'warning': 'Permanent deletion. Cannot be undone. Close affected apps first.'}
 
     def _matches(self, original: Candidate) -> bool:
         latest = self._snapshot(Path(original.path))
@@ -238,8 +309,8 @@ class CleanupEngine:
             plan = self.plans.pop(plan_id, None)  # single use, even on error
             if not plan or time.monotonic() - plan['created'] > PLAN_LIFETIME:
                 raise ValueError('Plan missing or expired. Create a new plan.')
-            if not dry_run and confirm != 'DELETE TEMP FILES':
-                raise ValueError('Type DELETE TEMP FILES to authorize deletion.')
+            if not dry_run and confirm != 'DELETE SELECTED FILES':
+                raise ValueError('Type DELETE SELECTED FILES to authorize deletion.')
             # This code path is only available on Windows in production.
             if not self._testing and os.name != 'nt':
                 raise ValueError('Cleanup execution is only enabled on Windows')

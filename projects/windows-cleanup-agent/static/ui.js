@@ -2,6 +2,8 @@
 const $ = (id) => document.getElementById(id);
 let token = '';
 let scanTimer = null;
+let cacheTimer = null;
+let cacheSources = [];
 let candidates = [];
 let selected = new Set();
 let currentPlan = null;
@@ -38,7 +40,7 @@ async function request(path, body = null) {
 function showView(view) {
   document.querySelectorAll('.view').forEach(el => el.classList.toggle('active', el.id === `view-${view}`));
   document.querySelectorAll('.nav').forEach(el => el.classList.toggle('active', el.dataset.view === view));
-  $('section-label').textContent = ({overview:'نظرة عامة',cleanup:'التنظيف الآمن',activity:'سجل النشاط',settings:'الإعدادات'})[view];
+  $('section-label').textContent = ({overview:'نظرة عامة',cleanup:'الكاش والتنظيف',activity:'سجل النشاط',settings:'الإعدادات'})[view];
   if (view === 'activity') loadActivity();
 }
 function displayScan(scan) {
@@ -58,8 +60,8 @@ function displayScan(scan) {
   $('legend-used').textContent = size(result.used);
   $('legend-free').textContent = size(result.free);
   $('scan-time').textContent = 'آخر فحص مكتمل';
-  $('scan-note').textContent = result.errors || result.skipped_links
-    ? `تنبيه: تعذر قراءة ${result.errors} عناصر، وتم تجاوز ${result.skipped_links} رابط أو junction. قد تكون أحجام المجلدات غير مكتملة.`
+  $('scan-note').textContent = result.errors || result.skipped_links || result.truncated
+    ? `تنبيه: تعذر قراءة ${result.errors} عناصر، وتم تجاوز ${result.skipped_links} رابط أو junction. قد تكون أحجام المجلدات غير مكتملة؛ حد الفحص: ${result.truncated ? "تم بلوغه" : "لم يُبلغ"}.`
     : 'الفحص تم بنجاح. تحليل الملفات قراءة فقط، ويمكن مراجعة فرص التنظيف من تبويب التنظيف الآمن.';
   const list = $('folder-list');
   list.replaceChildren();
@@ -74,6 +76,17 @@ function displayScan(scan) {
     track.append(fill);item.append(line,track);list.append(item);
   });
   if (!result.folders.length) list.append(dom('p','empty','لم يتم العثور على مجلدات يمكن قراءتها.'));
+  $('files-count').textContent = `${(result.files_seen || 0).toLocaleString('ar-SA')} ملف ممسوح${result.truncated?' · فحص جزئي':''}`;
+  const big = $('largest-files');big.replaceChildren();
+  (result.largest_files || []).slice(0,16).forEach(file => {
+    const row=dom('div','data-row');row.append(dom('span','',file.path),dom('b','',size(file.bytes)));big.append(row);
+  });
+  if (!big.childElementCount)big.append(dom('p','empty','لم تُكتشف ملفات فوق 32 MB ضمن المناطق المقروءة.'));
+  const types=$('file-types');types.replaceChildren();
+  (result.file_types||[]).slice(0,12).forEach(item=>{
+    const row=dom('div','data-row');row.append(dom('span','',item.extension),dom('b','',size(item.bytes)));types.append(row);
+  });
+  if (!types.childElementCount)types.append(dom('p','empty','لا توجد بيانات امتدادات.'));
 }
 async function checkScan() {
   try {
@@ -88,43 +101,93 @@ async function checkScan() {
 }
 async function startScan() {
   try {
-    await request('/api/scan/start',{});
+    const outcomes=await Promise.allSettled([request('/api/scan/start',{}),request('/api/caches/start',{})]);
+    if(outcomes.every(r=>r.status==='rejected'))throw outcomes[0].reason;
+    if(outcomes[1].status==='fulfilled')ensureCachePolling();
+    if(outcomes[0].status==='rejected')toast('فحص القرص جارٍ بالفعل؛ بدأنا فحص الكاش');
     displayScan({status:'running',progress:'Starting'});
     if (scanTimer) clearInterval(scanTimer);
     scanTimer = setInterval(checkScan, 1400);
   } catch(err) {toast(err.message);}
+}
+function ensureCachePolling(){
+  if(!cacheTimer)cacheTimer=setInterval(checkCache,1500);
+  checkCache();
+}
+function showSourceCards(report){
+  cacheSources=report.sources||[];
+  const root=$('cache-sources');root.replaceChildren();
+  $('cache-audit-meta').textContent = `${cacheSources.length} مصدر · تم قياس ${size(report.inspected_bytes||0)} · ${report.limited?'نتائج جزئية': 'قياس مكتمل ضمن المواقع المعروفة'} · ${report.errors||0} أخطاء`;
+  cacheSources.forEach(src=>{
+    const card=dom('article','source-card');
+    card.append(dom('h3','',src.label),dom('div','source-size',size(src.bytes)));
+    const badge=dom('div',`risk ${src.cleanable?'':'protected'}`,src.cleanable?`مراجعة ${src.risk}`:'للقراءة فقط · محمي');
+    card.append(badge,dom('small','',src.cleanable?`مؤهل للاختيار: ${size(src.eligible_bytes)}`:'غير مسموح بالحذف من التطبيق'));
+    card.append(dom('p','source-path',src.path),dom('p','',src.note));
+    if(src.limited)card.append(dom('p','','⚠ هذه النتيجة جزئية بسبب الحد أو الملفات غير المتاحة'));
+    root.append(card);
+  });
+  if(!root.childElementCount)root.append(dom('p','empty','لم يُعثر على مصادر كاش معروفة.'));
+}
+async function checkCache(){
+  try{
+    const state=await request('/api/caches');
+    const running=state.status==='running';
+    $('cache-status').hidden=!running;
+    $('cache-status-text').textContent=`فحص الكاش: ${state.progress||'جارِ التحليل'}`;
+    $('candidates-button').disabled=running;
+    if(state.status==='complete' && state.result){
+      showSourceCards(state.result);
+      showCandidates(state.result);
+      if(cacheTimer){clearInterval(cacheTimer);cacheTimer=null;toast('اكتمل تحليل الكاش ومصادر الملفات.');}
+    } else if(state.status==='error'){
+      if(cacheTimer){clearInterval(cacheTimer);cacheTimer=null;}
+      toast(`تعذر فحص الكاش: ${state.progress}`);
+    } else if(state.status==='idle' && cacheTimer){clearInterval(cacheTimer);cacheTimer=null;}
+  }catch(err){if(cacheTimer){clearInterval(cacheTimer);cacheTimer=null;}toast(err.message);}
+}
+function visibleCandidates(){
+  const source=$('source-filter').value;
+  return candidates.filter(item=>!source || item.category===source);
 }
 function updateSelection() {
   const items = candidates.filter(item => selected.has(item.id));
   $('selection-count').textContent = `${items.length} محدد`;
   $('selected-size').textContent = size(items.reduce((sum,x)=>sum + x.bytes,0));
   $('plan-button').disabled = !items.length;
-  $('select-all').textContent = selected.size === candidates.length && candidates.length ? 'إلغاء التحديد' : 'تحديد الكل';
+  $('select-all').textContent = 'تحديد الظاهر';
 }
-function showCandidates(data) {
-  candidates = data.items || [];
-  selected.clear();
-  $('cleanup-space').textContent = data.available ? size(data.total_bytes) : '—';
-  $('candidate-meta').textContent = data.available ? `${candidates.length} ملف مؤهل · ${size(data.total_bytes)} · ${data.limited ? 'نتائج محدودة لتخفيف الحمل' : 'اكتمل البحث'}` : (data.reason || 'لم يتم العثور على ملفات مؤهلة');
-  const list = $('candidates-list');list.replaceChildren();
-  if (!candidates.length) {
-    const tr = dom('tr');const td=dom('td','empty',data.available?'ما لقينا ملفات Temp مؤهلة للحذف حاليًا.':'لا يمكن الوصول إلى مجلد Temp في هذا الجهاز.');
-    td.colSpan=4;tr.append(td);list.append(tr);
+function renderCandidates(){
+  const list=$('candidates-list');list.replaceChildren();
+  const visible=visibleCandidates();
+  if(!visible.length){
+    const tr=dom('tr');const td=dom('td','empty','ما فيه ملفات مؤهلة في التصنيف المحدد.');td.colSpan=5;tr.append(td);list.append(tr);
   }
-  candidates.forEach(item => {
-    const tr=dom('tr');const pick=dom('td');const box=dom('input');box.type='checkbox';box.setAttribute('aria-label',`تحديد ${item.path}`);
-    box.addEventListener('change',()=>{box.checked?selected.add(item.id):selected.delete(item.id);updateSelection();});
-    pick.append(box);
-    tr.append(pick,dom('td','path',item.path),dom('td','',`${item.age_days} يوم`),dom('td','',size(item.bytes)));
-    tr.dataset.id = item.id;
+  visible.slice(0,200).forEach(item=>{
+    const tr=dom('tr');const pick=dom('td');const box=dom('input');box.type='checkbox';box.checked=selected.has(item.id);
+    box.setAttribute('aria-label',`تحديد ${item.path}`);
+    box.addEventListener('change',()=>{box.checked?selected.add(item.id):selected.delete(item.id);updateSelection();});pick.append(box);
+    const src=cacheSources.find(s=>s.key===item.category);
+    tr.append(pick,dom('td','path',item.path),dom('td','tag-risk',`${src?.label||item.category} · ${item.risk}`),dom('td','',`${item.age_days} يوم`),dom('td','',size(item.bytes)));
     list.append(tr);
-  });updateSelection();
+  });
+  if(visible.length>200){const tr=dom('tr');const td=dom('td','empty',`نعرض أول 200 من ${visible.length} ملف. استخدم فلتر المصدر لعرض ملفات أخرى.`);td.colSpan=5;tr.append(td);list.append(tr);}
+  updateSelection();
 }
-async function refreshCandidates() {
-  $('candidates-button').disabled = true;
-  try {showCandidates(await request('/api/candidates/refresh',{})); toast('تم تحليل ملفات Temp المحلية فقط.');}
+function showCandidates(data){
+  candidates=data.items||[];
+  selected.clear();
+  $('cleanup-space').textContent=data.available?size(data.total_bytes):'—';
+  $('candidate-meta').textContent=data.available?`${candidates.length} ملف مؤهل للموافقة · ${size(data.total_bytes)} · ${data.limited?'النتائج جزئية':'الانتهاء من المواقع المعروفة'}`:(data.reason||'لم يتم العثور على ملفات مؤهلة');
+  const filter=$('source-filter'),previous=filter.value;
+  filter.replaceChildren();const all=dom('option','','كل المصادر');all.value='';filter.append(all);
+  cacheSources.filter(s=>s.eligible_count).forEach(s=>{const option=dom('option','',s.label);option.value=s.key;filter.append(option);});
+  filter.value=[...filter.options].some(x=>x.value===previous)?previous:'';
+  renderCandidates();
+}
+async function refreshCandidates(){
+  try {await request('/api/caches/start',{});ensureCachePolling();toast('بدأ فحص الكاش والملفات الحقيقية.');}
   catch(err){toast(err.message);}
-  finally{$('candidates-button').disabled=false;}
 }
 function closeModal() {$('confirm-modal').hidden=true;currentPlan=null;$('confirm-input').value='';$('execute-delete').disabled=true;}
 async function planCleanup() {
@@ -159,8 +222,8 @@ async function loadActivity(){
     if(!r.entries.length)return list.append(dom('p','empty','لا توجد عمليات مسجلة بعد.'));
     r.entries.forEach(entry=>{
       const row=dom('div','activity-row');row.append(dom('div','activity-icon',entry.event==='scan'?'◫':'✧'));
-      const body=dom('div');body.append(dom('b','',entry.event==='scan'?'فحص القرص':'تنظيف ملفات مؤقتة'));
-      body.append(dom('p','',entry.event==='scan'?`تحذيرات الفحص: ${entry.warnings || 0}`:`تم الحذف: ${entry.deleted || 0} · المساحة المقدّرة: ${size(entry.freed_estimate || 0)} · غير مكتمل: ${entry.failed || 0}`));
+      const body=dom('div');body.append(dom('b','',entry.event==='scan'?'فحص القرص':entry.event==='cache_audit'?'فحص الكاش':'تنظيف ملفات محددة'));
+      body.append(dom('p','',entry.event==='scan'?`ملفات ممسوحة: ${entry.files_seen||0} · تحذيرات: ${entry.warnings||0}`:entry.event==='cache_audit'?`مصادر: ${entry.sources||0} · مؤهل للمراجعة: ${size(entry.eligible_bytes||0)}`:`تم الحذف: ${entry.deleted||0} · وفّر تقريبًا: ${size(entry.freed_estimate||0)} · غير مكتمل: ${entry.failed||0}`));
       body.append(dom('p','small-muted',new Date(entry.at).toLocaleString('ar-SA')));
       row.append(body);list.append(row);
     });
@@ -180,6 +243,11 @@ async function sendChat(message){
   try{
     const response=await request('/api/chat',{message,history});
     addMessage(response.text,'assistant');
+    if(response.action==='scan_started'){
+      ensureCachePolling();
+      const status=await request('/api/scan');
+      if(status.status==='running'&&!scanTimer)scanTimer=setInterval(checkScan,1500);
+    }
     chatHistory.push({role:'user',content:message},{role:'assistant',content:response.text});
     chatHistory=chatHistory.slice(-12);
   }catch(err){addMessage(`تعذر الاتصال: ${err.message}`,'assistant');}
@@ -197,14 +265,17 @@ async function initialize(){
   $('cancel-scan').addEventListener('click',async()=>{await request('/api/scan/cancel',{});toast('تم إرسال طلب إيقاف الفحص');});
   $('refresh-button').addEventListener('click',()=>{checkScan();loadActivity();});
   $('candidates-button').addEventListener('click',refreshCandidates);
+  $('source-filter').addEventListener('change',renderCandidates);
   $('select-all').addEventListener('click',()=>{
-    const all=selected.size===candidates.length;selected=new Set(all?[]:candidates.map(x=>x.id));
-    document.querySelectorAll('#candidates-list input[type=checkbox]').forEach(box=>{box.checked=!all;});updateSelection();
+    const visible=visibleCandidates().slice(0,200);
+    const all=visible.every(item=>selected.has(item.id));
+    visible.forEach(item=>all?selected.delete(item.id):selected.add(item.id));
+    renderCandidates();
   });
   $('plan-button').addEventListener('click',planCleanup);
   $('modal-close').addEventListener('click',closeModal);
   $('confirm-modal').addEventListener('click',event=>{if(event.target===$('confirm-modal'))closeModal();});
-  $('confirm-input').addEventListener('input',()=>{$('execute-delete').disabled=$('confirm-input').value!=='DELETE TEMP FILES';});
+  $('confirm-input').addEventListener('input',()=>{$('execute-delete').disabled=$('confirm-input').value!=='DELETE SELECTED FILES';});
   $('execute-delete').addEventListener('click',()=>executePlan(false));
   $('dry-run').addEventListener('click',()=>executePlan(true));
   $('activity-button').addEventListener('click',loadActivity);
@@ -220,7 +291,10 @@ async function initialize(){
     modelsList(status.models,status.model);
     displayScan(status.scan);
     if(status.scan.status==='running')scanTimer=setInterval(checkScan,1400);
-    showCandidates(await request('/api/candidates'));
+    const old=await request('/api/candidates');
+    if(old.available){showSourceCards(old);showCandidates(old);}
+    if(status.cache?.status==='running')ensureCachePolling();
+    else if(status.cache?.status==='complete' && status.cache.result){showSourceCards(status.cache.result);showCandidates(status.cache.result);}
   }catch(err){toast(`تعذر بدء التطبيق: ${err.message}`);}
 }
 initialize();
