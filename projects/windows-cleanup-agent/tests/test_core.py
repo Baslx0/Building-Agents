@@ -61,7 +61,7 @@ class TestCleanup(unittest.TestCase):
         target = self.old_file()
         item = self.engine.discover()['items'][0]
         plan = self.engine.make_plan([item['id']])
-        result = self.engine.execute(plan['plan_id'], 'DELETE TEMP FILES', dry_run=True)
+        result = self.engine.execute(plan['plan_id'], '', dry_run=True)
         self.assertTrue(target.exists())
         self.assertEqual(result['freed_estimate'], 0)
 
