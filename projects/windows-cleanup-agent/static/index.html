@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b0d11">
+  <title>DiskPilot — Windows Cleanup Agent</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-icon">◫</span><span><b>DiskPilot</b><small>LOCAL CLEANUP AGENT</small></span></div>
+    <div class="nav-caption">WORKSPACE</div>
+    <nav class="side-nav" aria-label="القائمة">
+      <button class="nav active" data-view="overview"><span>◫</span> نظرة عامة</button>
+      <button class="nav" data-view="cleanup"><span>✧</span> التنظيف الآمن</button>
+      <button class="nav" data-view="activity"><span>◷</span> سجل النشاط</button>
+      <button class="nav" data-view="settings"><span>⚙</span> الإعدادات</button>
+    </nav>
+    <div class="sidebar-bottom">
+      <div class="privacy"><span class="green-dot"></span><span><b>Private by design</b><small>الملفات لا تُرسل إلى السحابة</small></span></div>
+      <p>يتطلب كل حذف مراجعة وموافقة صريحة. لا توجد أوامر Shell للذكاء الاصطناعي.</p>
+    </div>
+  </aside>
+  <main class="content">
+    <header class="topbar"><div><span class="crumb">DiskPilot</span><span class="slash">/</span><span id="section-label">نظرة عامة</span></div><div class="top-actions"><span id="ollama-state" class="state-tag">جارِ التحقق من Ollama</span><button class="icon-btn" id="refresh-button" title="تحديث البيانات" aria-label="تحديث البيانات">↻</button></div></header>
+    <section class="view active" id="view-overview">
+      <div class="heading-row"><div><div class="eyebrow">SYSTEM HEALTH · WINDOWS</div><h1>خلّ جهازك يتنفس.</h1><p>اعرف وين راحت مساحة التخزين قبل ما تحذف أي شيء.</p></div><button class="primary" id="scan-button">◉ افحص القرص C:</button></div>
+      <div class="metrics">
+        <article class="metric"><div class="metric-title">المساحة الإجمالية <span>◉</span></div><div class="metric-value" id="total-disk">—</div><div class="metric-foot">سعة القرص المحدد</div></article>
+        <article class="metric"><div class="metric-title">المساحة المستخدمة <span>◪</span></div><div class="metric-value" id="used-disk">—</div><div class="metric-foot" id="used-percent">في انتظار الفحص</div></article>
+        <article class="metric"><div class="metric-title">المساحة المتاحة <span>◌</span></div><div class="metric-value accent-green" id="free-disk">—</div><div class="metric-foot">بدون أي حذف</div></article>
+        <article class="metric"><div class="metric-title">تنظيف قابل للمراجعة <span>✧</span></div><div class="metric-value accent-purple" id="cleanup-space">—</div><div class="metric-foot">ملفات Temp القديمة المكتشفة</div></article>
+      </div>
+      <div class="main-grid">
+        <article class="panel storage-panel"><div class="panel-head"><h2>استخدام مساحة القرص</h2><span class="small-muted" id="scan-time">لم يتم الفحص بعد</span></div><div class="storage-visual"><div class="donut" id="donut"><div class="donut-center"><span class="num" id="ring-percent">—</span><small>مستخدم</small></div></div><div class="usage-legend"><div><span class="legend purple"></span>المستخدم <b id="legend-used">—</b></div><div><span class="legend gray"></span>المتاح <b id="legend-free">—</b></div><p>الفحص قراءة فقط، ولا يؤثر في الملفات الموجودة.</p></div></div></article>
+        <article class="panel folders-panel"><div class="panel-head"><h2>أكبر مجلدات القرص</h2><span class="small-muted">TOP 8</span></div><div id="folder-list" class="folder-list"><p class="empty">ابدأ فحص القرص لعرض توزيع المساحة.</p></div></article>
+      </div>
+      <div class="scan-status" id="scan-status" hidden><span class="loader"></span><span id="scan-status-text">جارِ فحص الملفات...</span><button class="subtle" id="cancel-scan">إيقاف الفحص</button></div>
+      <div class="note" id="scan-note">الفحص قد يستغرق بعض الوقت، وقد تكون الأحجام تقريبية إذا كانت ملفات النظام غير متاحة.</div>
+    </section>
+    <section class="view" id="view-cleanup">
+      <div class="heading-row"><div><div class="eyebrow">SAFE CLEANUP</div><h1>نظّف بقرارك أنت.</h1><p>نستعرض فقط الملفات القديمة داخل Temp الخاص بحسابك، بدون لمس ملفاتك الشخصية أو ملفات Windows.</p></div><button class="primary" id="candidates-button">✧ ابحث عن فرص تنظيف</button></div>
+      <div class="safety-banner"><span>♧</span><div><b>تنظيف مقيّد بحدود آمنة</b><p>الملفات المؤقتة بعمر 7 أيام أو أكثر فقط. كل ملف يُراجع مرة ثانية قبل الحذف. الحذف نهائي بعد الموافقة، وقد تكون بعض الملفات قيد الاستخدام.</p></div></div>
+      <div class="panel"><div class="panel-head"><div><h2>الملفات المرشحة</h2><p class="small-muted" id="candidate-meta">لم يتم البحث بعد</p></div><div class="selection-actions"><span id="selection-count">0 محدد</span><button class="subtle" id="select-all">تحديد الكل</button></div></div><div class="table-scroll"><table><thead><tr><th>اختيار</th><th>الملف</th><th>العمر</th><th>الحجم</th></tr></thead><tbody id="candidates-list"><tr><td colspan="4" class="empty">اضغط «ابحث عن فرص تنظيف» لعرض المرشحين.</td></tr></tbody></table></div><div class="panel-footer"><div><span class="small-muted">المساحة المحددة</span><strong id="selected-size">0 B</strong></div><button class="primary" id="plan-button" disabled>مراجعة خطة التنظيف ←</button></div></div>
+      <div class="note">حذف ملفات Temp لا يضمن توفير مساحة مساوية لحجمها فورًا، فقد يستخدم بعض البرامج هذه الملفات أو يعيد إنشاءها. لا نحذف المجلدات بعملية Recursive Delete.</div>
+    </section>
+    <section class="view" id="view-activity"><div class="heading-row"><div><div class="eyebrow">TRANSPARENCY</div><h1>كل عملية موثّقة.</h1><p>السجل محفوظ على جهازك فقط، ولا يُرفع إلى المستودع.</p></div><button class="secondary" id="activity-button">↻ تحديث السجل</button></div><div class="panel"><div id="activity-list" class="activity-list"><p class="empty">ما فيه عمليات مسجّلة.</p></div></div></section>
+    <section class="view" id="view-settings"><div class="heading-row"><div><div class="eyebrow">LOCAL AI · OLLAMA</div><h1>إعدادات الإيجنت.</h1><p>اختر الموديل المحلي. المحادثة لا تملك أداة حذف.</p></div></div><div class="panel settings-panel"><label for="model-select">موديل المحادثة</label><select id="model-select"><option>جارِ جلب النماذج...</option></select><p class="small-muted">الاختيار الأساسي: qwen3.5:4b · البديل الأخف: qwen3.5:2b</p><button class="primary" id="save-model">حفظ الموديل</button><hr><h2>تثبيت الموديل</h2><p>من PowerShell:</p><pre>ollama pull qwen3.5:4b</pre><p>أو للوضع الأخف:</p><pre>ollama pull qwen3.5:2b</pre><hr><h2>حدود الصلاحيات</h2><p>متصفح على 127.0.0.1 فقط · فحص Read-only · تنظيف Temp فقط بموافقة · نموذج Ollama محلي · بدون صلاحية Shell أو حذف عبر المحادثة.</p></div></section>
+  </main>
+  <aside class="chat-pane"><div class="chat-head"><div class="chat-avatar">✧</div><div><b>DiskPilot Assistant</b><small><span class="green-dot"></span> LOCAL AI · OLLAMA</small></div><span class="beta">BETA</span></div><div class="chat-thread" id="chat-thread"><div class="chat-message assistant"><span class="avatar">✧</span><div class="bubble">أهلًا! أنا مساعدك المحلي. أقدر أشرح لك وين تستهلك المساحة وأساعدك تقرر وش تنظف، لكن ما أحذف أي شيء عن طريق المحادثة.</div></div><div class="prompt-options"><button class="prompt-chip" data-prompt="اشرح لي استخدام مساحة C من آخر فحص.">◫ حلّل مساحة C:</button><button class="prompt-chip" data-prompt="ما الملفات المؤقتة المرشحة للتنظيف؟ وما المخاطر؟">✧ وش أقدر أنظّف؟</button><button class="prompt-chip" data-prompt="هل فيه شيء خطير في الحذف؟ اشرح لي حدود الأمان.">♧ هل التنظيف آمن؟</button></div></div><form id="chat-form" class="chat-compose"><textarea id="chat-input" rows="2" placeholder="اسأل عن الملفات أو التخزين..." maxlength="2000"></textarea><div class="compose-footer"><span>محلي · بدون وصول للحذف</span><button class="send" type="submit" id="send-button" aria-label="إرسال الرسالة">➤</button></div></form></aside>
+</div>
+<div class="modal-backdrop" id="confirm-modal" hidden role="presentation"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-head"><h2 id="modal-title">راجع قبل الحذف</h2><button id="modal-close" class="icon-btn" aria-label="إغلاق">✕</button></div><p>هذه الملفات القديمة فقط سيتم حذفها نهائيًا، ولن يمكن التراجع عن العملية.</p><div id="modal-summary" class="modal-summary"></div><div id="modal-items" class="modal-items"></div><label class="confirm-label" for="confirm-input">للتأكيد، اكتب <code>DELETE TEMP FILES</code></label><input id="confirm-input" autocomplete="off" spellcheck="false" placeholder="DELETE TEMP FILES"><div class="modal-actions"><button id="dry-run" class="secondary">محاكاة فقط</button><button id="execute-delete" class="danger" disabled>حذف الملفات المحددة</button></div></div></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<script src="/ui.js" defer></script>
+</body>
+</html>

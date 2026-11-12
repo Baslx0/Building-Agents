@@ -1,42 +1,66 @@
-# Windows Cleanup Agent
+# DiskPilot — Windows Cleanup Agent
 
-A local-first, approval-gated Windows disk cleanup project built while learning Python agents.
+A lightweight, **local-first** Windows disk analyzer with a chat dashboard, Ollama model selection, human-reviewed TEMP file recommendations, and an explicit one-time deletion approval process.
 
-## V1: Disk Analyzer (read-only)
+> **Security scope:** An experimental personal tool. Review the source code and back up important data before enabling cleanup. File deletion is irreversible. The conservative allowlist reduces risk but no filesystem cleaner can guarantee against every race condition, locked file, or application-specific dependency.
 
-The first milestone inventories disk usage. It **does not delete, move, or modify any files** and does not send file paths or scan results to GitHub or an AI model.
+## Quick start (Windows 10 / 11)
 
-- Shows total, used, and free disk space.
-- Scans immediate folders under a selected drive/folder and estimates their recursive sizes.
-- Lists the largest folders first.
-- Skips directory junctions/reparse points and symbolic links to avoid loops.
-- Reports scan errors and inaccessible items; estimates can therefore be incomplete.
+1. Install **Python 3.10+** and [Ollama](https://ollama.com/download).
+2. Open PowerShell inside `projects/windows-cleanup-agent`.
+3. Optional for AI chat (requires several GB free on **the disk where Ollama stores models**):
 
-## Run locally (Windows)
+   ```powershell
+   ollama pull qwen3.5:4b
+   # Or, for a lower-resource model:
+   ollama pull qwen3.5:2b
+   ```
 
-Requires Python 3.10+; no third-party packages.
+4. Start the dashboard (no `pip install`, no npm, no frameworks):
+
+   ```powershell
+   py app.py
+   ```
+
+5. Visit **http://127.0.0.1:8765** (opens automatically), click **افحص القرص C:**, and review the findings. The dashboard still works without Ollama; only the chat needs a model.
+
+### What each stage includes
+
+| Stage | Delivered in this project |
+|---|---|
+| V1 · Analyze | Read-only disk usage inventory, largest folders, errors and cancel |
+| V2 · Recommend | Finds eligible files in **your own** `%LOCALAPPDATA%\Temp` only; no guesses about other file safety |
+| V3 · Review & approve | Exact path/size list, snapshot validation, 10-minute one-use plan, typed confirmation |
+| V4 · Execute & audit | Individually rechecks files; removes approved regular files, no recursive folder deletion, local audit log, dry run |
+| V5 · Local AI | Ollama Qwen 3.5 4B default; choose installed 2B or other; bounded read-only tool calls, no model-write capability |
+
+## Safe cleanup rules
+
+- The candidate search only allows existing regular files within `%LOCALAPPDATA%\Temp` belonging to the current user; **never** `C:\Windows`, `Program Files`, `Downloads`, Desktop, Documents, system temp, or another user's folders.
+- Skip junctions, symbolic links, reparse points, files younger than **7 days**, files over **250 MB**, and executable/install/script types (`.exe`, `.dll`, `.sys`, `.msi`, etc.).
+- At most 500 candidates per search; at most 15,000 temp entries inspected, to avoid unbounded resource use.
+- Approval requires selecting specific candidate IDs → server-side snapshot recheck → preview → typing **`DELETE TEMP FILES`** → one-time action (expires in 10 minutes). This is permanent deletion; not Recycle Bin.
+- The app checks file size, modification time, device, inode and allowed path immediately before each unlink. **There remains a small TOCTOU race window**, so do not run this on shared or adversarial systems.
+- AI cannot call deletion, PowerShell, filesystem writing, arbitrary HTTP endpoints, or execute arbitrary commands. Only three **read-only** tools are exposed to the model: disk summary, candidate summary, and activity summary.
+- The backend binds **127.0.0.1 only**, rejects foreign Host/Origin headers, and requires a local session token for POSTs.
+- Audit entries (counts, not full deleted paths) are local in `%LOCALAPPDATA%\WindowsCleanupAgent\audit.jsonl`. Chat history is held in the browser tab memory, not written to disk or to GitHub.
+- No cloud API, telemetry, dependencies, or external CDN. Ollama is queried on localhost only.
+
+## Controls
+
+- **Overview:** Start/cancel C: scan and view largest folders. System files may be inaccessible and reported sizes incomplete.
+- **Cleanup:** Discover old TEMP files, select precisely, preview, dry-run, then confirm permanent deletion.
+- **Activity:** Local scan/cleanup log.
+- **Settings:** Choose an installed Ollama model.
+- **Chat:** Ask in Arabic or English. A constrained agent may request only read-only local summaries.
+
+## Development & tests
 
 ```powershell
-cd projects/windows-cleanup-agent
-python analyzer.py --path C:\ --top 10
+py -m unittest discover -s tests -v
+py app.py --no-browser
 ```
 
-For a quicker initial test:
+Requires no admin access. Run under your regular user account. For large drives a full recursive scan may take a long time; you can cancel it. Disk scanning and Temp candidate scan are synchronous background-thread operations in the local server.
 
-```powershell
-python analyzer.py --path "$env:USERPROFILE\Downloads" --top 5
-```
-
-Scanning an entire C: drive can take a while. No administrator permissions are required; inaccessible files are skipped.
-
-**Privacy:** The report prints to your own terminal only. Avoid sharing reports containing personal folder names unless you review them first.
-
-## Roadmap
-
-1. **V1 — Analyze:** read-only drive and folder inventory.
-2. **V2 — Recommend:** classify candidate cache/temp files with evidence and risk levels, never assume a file is disposable based only on its name.
-3. **V3 — Approve:** display an explicit operation plan with exact paths, sizes, exclusions, and per-group approval.
-4. **V4 — Execute safely:** scoped allowlist, path revalidation, dry-run, reversible actions where possible, logs, and verification.
-5. **V5 — Optional Ollama:** natural-language explanations, with the LLM unable to directly execute shell commands or deletions.
-
-Never automatically delete Windows, Program Files, application data, personal files, restore points, or unknown files.
+**Planned improvements:** Windows API handle-based unlink for stronger race resistance; more detailed progress and per-category cleaners implemented through official Windows mechanisms; benchmark the model on Arabic tool-calling cases; signed desktop packaging.
