@@ -4,6 +4,10 @@ A lightweight, **local-first** Windows disk analyzer with a chat dashboard, Olla
 
 > **Security scope:** An experimental personal tool. Review the source code and back up important data before enabling cleanup. File deletion is irreversible. The conservative allowlist reduces risk but no filesystem cleaner can guarantee against every race condition, locked file, or application-specific dependency.
 
+## Critical: keep Ollama models off a full C: drive
+
+Ollama stores Windows models under your user profile on `C:` by default. **Before running `ollama pull`**, open Windows **Edit environment variables for your account** and set `OLLAMA_MODELS` to a folder on a drive with free space, such as `D:\\Ollama\\Models`. Quit Ollama from the system tray, relaunch it and open a fresh PowerShell terminal. This changes the download location for future models; it does **not** automatically move models already downloaded. See [official Windows instructions](https://github.com/ollama/ollama/blob/main/docs/windows.mdx#changing-model-location).
+
 ## Quick start (Windows 10 / 11)
 
 1. Install **Python 3.10+** and [Ollama](https://ollama.com/download).
