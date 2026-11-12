@@ -1,0 +1,13 @@
+@echo off
+cd /d "%~dp0"
+where py >nul 2>nul
+if %errorlevel%==0 (
+    py app.py
+) else (
+    python app.py
+)
+if %errorlevel% neq 0 (
+    echo.
+    echo Could not start the dashboard. Install Python 3.10+ and try again.
+    pause
+)
