@@ -65,6 +65,10 @@ Building-Agents/
                 `-- chat_history.json
 ```
 
+## Practical projects
+
+- [DiskPilot — Windows Cleanup Agent](projects/windows-cleanup-agent/README.md): local dashboard, disk analysis, explicit approval-gated TEMP cleanup, and a constrained Ollama chat assistant.
+
 ## Learning principles
 
 1. Build from first principles before adding frameworks.
