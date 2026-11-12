@@ -238,7 +238,7 @@ class CleanupEngine:
             plan = self.plans.pop(plan_id, None)  # single use, even on error
             if not plan or time.monotonic() - plan['created'] > PLAN_LIFETIME:
                 raise ValueError('Plan missing or expired. Create a new plan.')
-            if confirm != 'DELETE TEMP FILES':
+            if not dry_run and confirm != 'DELETE TEMP FILES':
                 raise ValueError('Type DELETE TEMP FILES to authorize deletion.')
             # This code path is only available on Windows in production.
             if not self._testing and os.name != 'nt':
